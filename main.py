@@ -5,6 +5,7 @@ from matplotlib.widgets import Button
 from matplotlib.widgets import TextBox
 
 from tkinter import Tk, filedialog
+import math
 
 class ProjectionDrawer:
 
@@ -20,6 +21,8 @@ class ProjectionDrawer:
         
         self._ISOMode = 0
         self._button_press = 0
+        self._text_position = None
+        self._scale_position = [0,0]
 
         self.ax.set_aspect('equal')
 
@@ -37,23 +40,23 @@ class ProjectionDrawer:
         self.LoadGUI()
     #--------------------------------------------------------------
     #Info
-    def LoadGUI(self):
-        plt.title("Proyección de Rectas")
-        plt.xlabel("X")
-        plt.ylabel("Y")
+    def LoadGUI(self):        
+        self.ax.set_title("Monge")
+        self.ax.set_xlabel("X")
+        self.ax.set_ylabel("Y")
 
         # Create buttons
         self.ax_clear_last = plt.axes([0.1, 0.01, 0.2, 0.05])  # [left, bottom, width, height]
         self.btn_clear_last = Button(self.ax_clear_last, 'Borrar ultima linea')
         self.btn_clear_last.on_clicked(self.clear_last_line)
 
-        self.ax_clear_last = plt.axes([0.8, 0.01, 0.1, 0.05])  # [left, bottom, width, height]
-        self.btn_clear_last = Button(self.ax_clear_last, 'Guardar')
-        self.btn_clear_last.on_clicked(self.save_lines)
+        self.ax_save = plt.axes([0.8, 0.01, 0.08, 0.05])  # [left, bottom, width, height]
+        self.btn_save = Button(self.ax_save, 'Guardar')
+        self.btn_save.on_clicked(self.save_lines)
         
-        self.ax_clear_last = plt.axes([0.9, 0.01, 0.1, 0.05])  # [left, bottom, width, height]
-        self.btn_clear_last = Button(self.ax_clear_last, 'Cargar')
-        self.btn_clear_last.on_clicked(self.load_lines)
+        self.ax_load = plt.axes([0.9, 0.01, 0.08, 0.05])  # [left, bottom, width, height]
+        self.btn_load = Button(self.ax_load, 'Cargar')
+        self.btn_load.on_clicked(self.load_lines)
 
         texts = ['Tamaño:', 'Escala:']
         self.text_boxes = []
@@ -65,26 +68,43 @@ class ProjectionDrawer:
         self.ax_load_values = plt.axes([0.01, 0.9 - len(texts) * 0.1, 0.1, 0.05])  # [left, bottom, width, height]
         self.btn_load_values = Button(self.ax_load_values, 'Cargar valores')
         self.btn_load_values.on_clicked(self.Load_info)
+
+        self.ax_change_mode = plt.axes([0.01, 0.9 - (len(texts) + 1)* 0.1, 0.1, 0.05])  # [left, bottom, width, height]
+        self.btn_change_mode = Button(self.ax_change_mode, 'Cambiar modo')
+        self.btn_change_mode.on_clicked(self.Change_Mode)
         
     #--------------------------------------------------------------
     #PRIVATE METHODS
+    def Change_Mode(self, event):
+        self._ISOMode = (self._ISOMode + 1) % 2
+        self.ax.set_title("Monge" if self._ISOMode == 0 else 'Isometria')
+        self.CreateBackground()
     def Load_info(self, event):        
         for i in range(len(self._info)):
             print(f'{self._info[i]} = {self.text_boxes[i].text}')
             self._info[i] = (int)(self.text_boxes[i].text)       
         self.CreateBackground()
 
-    def CalculatePosition(self, pos):
-        if (pos is not None):
-            pos_int, pos_float = divmod(pos, self._info[1])
-            if (pos_float > self._info[1] / 2.0):
-                pos_int += 1
-            return pos_int * self._info[1], True
+    def CalculatePosition(self, x, y):
+        if (x is not None and y is not None):
+            if (self._ISOMode == 0):
+                x_int, x_float = divmod(x, self._info[1])
+                y_int, y_float = divmod(y, self._info[1])
+                if (x_float > self._info[1] / 2.0):
+                    x_int += 1
+                if (y_float > self._info[1] / 2.0):
+                    y_int += 1
+                return x_int * self._info[1], y_int * self._info[1], True
+            else:
+                x += self._info[1] / (math.tan(math.radians(30)) * 2)
+
+                return x_int * self._info[1], y_int * self._info[1], True
+
         return 0, False
          
     def CreateBackground(self):
         tam = self._info[0]
-        i = 0
+        i = 0 if self._ISOMode == 0 else -tam
 
         for line in self.background_lines:
             line.remove()
@@ -92,23 +112,47 @@ class ProjectionDrawer:
         for line in self.lines:
             line.remove()
         self.lines = []
-        self.fig.canvas.draw()
 
-        while (i < tam):
-            line = Line2D([-tam, tam], [i, i], color='gray', linestyle='-', alpha=0.1)
-            self.background_lines.append(line)
-            self.ax.add_line(line)
+        self.ax.set_xticks(ticks=range(0, tam, self._info[1]))
+        self.ax.set_yticks(ticks=range(0, tam, self._info[1]))
+        x = 0
 
-            line = Line2D([i, i], [-tam, tam], color='gray', linestyle='-', alpha=0.1)
-            self.background_lines.append(line)
-            self.ax.add_line(line)
-            i += self._info[1]
+        self._scale_position = [self._info[1] / (math.tan(math.radians(30)) * 2)]
+        while (i < tam * 2):
+            if (self._ISOMode == 0):
+                line = Line2D([0, tam], [i, i], color='gray', linestyle='-', alpha=0.1)
+                self.background_lines.append(line)
+                self.ax.add_line(line)#H
+
+                line = Line2D([i, i], [0, tam], color='gray', linestyle='-', alpha=0.1)
+                self.background_lines.append(line)#V
+                self.ax.add_line(line)
+                i += self._info[1]
+            else:
+                y1 = (float)(i) - math.tan(math.radians(30)) * tam
+                line = Line2D([0, tam], [i, y1], color='gray', linestyle='-', alpha=0.1)
+                self.background_lines.append(line)
+                self.ax.add_line(line)#H
+                y2 = (float)(i) + math.tan(math.radians(30)) * tam
+                line = Line2D([0, tam], [i, y2], color='gray', linestyle='-', alpha=0.1)
+                self.background_lines.append(line)
+                self.ax.add_line(line)#H
+
+                x += self._info[1] / (math.tan(math.radians(30)) * 2)
+                line = Line2D([x, x], [0, tam], color='gray', linestyle='-', alpha=0.1)
+                self.background_lines.append(line)#V
+                self.ax.add_line(line)
+                i += self._info[1]
         # Establecer límites de ejes
         self.ax.set_xlim([0, tam])
         self.ax.set_ylim([0, tam])
 
+        self.fig.canvas.draw()
+
     def GetStyleLine(self, pressed):
         return '-' if pressed == 0 else 'dashed'
+    def GetLineWidth(self, pressed):
+        return 2.0 if pressed == 0 else 1.4
     #--------------------------------------------------------------    
     #EVENTS
     def on_press(self, event):
@@ -120,9 +164,8 @@ class ProjectionDrawer:
         elif event.button == 3:
             self._button_press = 1
 
-        x, cond_x = self.CalculatePosition(event.xdata)
-        y, cond_y = self.CalculatePosition(event.ydata)
-        if (cond_x == True and cond_y == True):
+        x, y, cond = self.CalculatePosition(event.xdata, event.ydata)
+        if (cond == True):
             self.points.append((x, y))
             self.is_drawing = True
 
@@ -136,16 +179,15 @@ class ProjectionDrawer:
             self.current_line.remove()
             self.current_line = None
 
-        x, cond_x = self.CalculatePosition(event.xdata)
-        y, cond_y = self.CalculatePosition(event.ydata)
+        x, y, cond = self.CalculatePosition(event.xdata, event.ydata)
         
         if self.text_label:
             self.text_label.remove()
 
-        if (cond_x == True and cond_y == True):
+        if (cond == True):
             self.points.append((x, y))
             line = Line2D([self.points[0][0], self.points[1][0]],
-                        [self.points[0][1], self.points[1][1]], color='black', linestyle=self.GetStyleLine(self._button_press))
+                        [self.points[0][1], self.points[1][1]], color='black', linestyle=self.GetStyleLine(self._button_press), linewidth=self.GetLineWidth(self._button_press))
             line.type_line = self._button_press
             self.lines.append(line)
             self.ax.add_line(line)
@@ -162,22 +204,33 @@ class ProjectionDrawer:
             self.current_line.remove()
             self.current_line = None
         
-        x, cond_x = self.CalculatePosition(event.xdata)
-        y, cond_y = self.CalculatePosition(event.ydata)
+        x, y, cond = self.CalculatePosition(event.xdata, event.ydata)
 
         #self.text_label.set_position((x, y))
         self.text_label.set_text(f'dist: { ((x - self._pointPosition[0])**2+(y - self._pointPosition[1])**2)**0.5 }')
         self.fig.canvas.draw()
 
-        if (cond_x == True and cond_y == True):
+        if (cond == True):
             self.current_line = Line2D([self.points[0][0], x],
-                                    [self.points[0][1], y], color='gray', linestyle=self.GetStyleLine(self._button_press))
+                                    [self.points[0][1], y], color='gray', linestyle=self.GetStyleLine(self._button_press), linewidth=self.GetLineWidth(self._button_press))
             self.ax.add_line(self.current_line)
             self.fig.canvas.draw()
+
     def on_key(self, event):
         if event.key == 'delete':
             x, y = event.xdata, event.ydata
             self.remove_closest_line(x, y)
+        """if event.key == 'control':
+            x, y, cond = self.CalculatePosition(event.xdata, event.ydata)
+            if (self._text_position == None):
+                self._text_position = self.ax.text(x, y, f'[{x},{y}]', ha='center', va='center', bbox=dict(facecolor='white', alpha=0.8))
+            self._text_position.set_position((x, y))
+            self._text_position.set_text(f'[{x},{y}]')
+            self.fig.canvas.draw()
+        else:
+            if (self._text_position != None):
+                self._text_position.remove()"""
+
 
     def remove_closest_line(self, x, y):
         if not self.lines:
@@ -209,61 +262,73 @@ class ProjectionDrawer:
             self.fig.canvas.draw()
     #--------------------------------------------------------------
     #SAVE AND LOAD
-    def save_lines(self, event):        
-        if not self.lines:
-            return
-        
+    def load_lines(self, event):
         root = Tk()
         root.withdraw()
-        file_path = filedialog.asksaveasfilename(title="Guardar líneas como", filetypes=[("ISO projection", "*.ipr")])
-
-        if file_path:
-            print(f"Guardando líneas en {file_path}")
-            with open(file_path, 'wt') as arch:
-                arch.write(self._ISOMode)
-                arch.write(self._info[0])
-                arch.write(self._info[1])
-                arch.write(0)
-                arch.write(0)
-                arch.write(0)
-                for i, l in enumerate(self.lines):
-                    arch.write(l.get_xdata()[0])
-                    arch.write(l.get_ydata()[0])
-                    arch.write(l.get_xdata()[1])
-                    arch.write(l.get_ydata()[1])
-                    arch.write(l.type_line)
-            arch.close()
-
-    def load_lines(self, event):
-        # Cuadro de diálogo emergente para cargar líneas
-        root = Tk()
-        root.withdraw()  # Ocultar la ventana principal de Tkinter
-        file_path = filedialog.askopenfilename(title="Seleccionar archivo para cargar líneas", filetypes=[("ISO projection", "*.ipr")])
+        file_path = filedialog.askopenfilename(title="Cargar archivo", filetypes=[("ISO projection", "*.ipr")])
 
         if file_path:
             print(f"Cargando líneas desde {file_path}")
-            with open(file_path, 'rt') as arch:
-                self._ISOMode = (int)(arch.read(1))
-                self._info[0] = (int)(arch.read(1))
-                self._info[1] = (int)(arch.read(1))
-                arch.read(1)
-                arch.read(1)
-                arch.read(1)
+            with open(file_path, 'r') as arch:
+                l = arch.readlines()
+                self._ISOMode = int(l[0].strip())
+                self._info[0] = int(l[1].strip())
+                self._info[1] = int(l[2].strip())
+                a = int(l[3].strip())
+                b = int(l[4].strip())
+                c = int(l[5].strip())
+                self.CreateBackground()
 
-                c = arch.read(1)
-                while (c):
-                    x1 = c
-                    y1 = arch.read(1)
-                    x2 = arch.read(1)
-                    y2 = arch.read(1)
-                    type = arch.read(1)
+                for i in range(6, len(l), 5):
+                    x1 = float(l[i + 0].strip())
+                    y1 = float(l[i + 1].strip())
+                    x2 = float(l[i + 2].strip())
+                    y2 = float(l[i + 3].strip())
+                    type = int(l[i + 4].strip())
+                    print(x1)
+                    print(y1)
+                    print(x2)
+                    print(y2)
 
-                    line = Line2D([x1, y1], [x2, y2], color='black', linestyle=self.GetStyleLine(type))
+                    line = Line2D([x1, x2], [y1, y2], color='black', linestyle=self.GetStyleLine(type), linewidth=self.GetLineWidth(type))
+                    line.type_line = type
                     self.lines.append(line)
                     self.ax.add_line(line)
+            self.fig.canvas.draw()
+            arch.close()
 
+    def save_lines(self, event):
+        if not self.lines:
+            return
+        self.fig.canvas.manager.window.after(0, self.save_lines_threaded)
 
-            arch.close()  
+    def save_lines_threaded(self):
+        root = Tk()
+        root.withdraw()
+        file_path = filedialog.asksaveasfilename(title="Guardar archivo", filetypes=[("ISO projection", "*.ipr")])
+
+        if file_path:
+            f = file_path.split('.')
+            print(file_path)
+            print(f)
+            if (len(f) > 0 and f[-1] != 'ipr'):
+                file_path += '.ipr'
+            print(file_path)
+            with open(file_path, 'w') as arch:
+                arch.write(str(self._ISOMode)+ "\n")
+                arch.write(str(self._info[0])+ "\n")
+                arch.write(str(self._info[1])+ "\n")
+                arch.write(str(0)+ "\n")
+                arch.write(str(0)+ "\n")
+                arch.write(str(0)+ "\n")
+                for i, l in enumerate(self.lines):
+                    arch.write(str(l.get_xdata()[0]) + "\n")
+                    arch.write(str(l.get_ydata()[0]) + "\n")
+                    arch.write(str(l.get_xdata()[1]) + "\n")
+                    arch.write(str(l.get_ydata()[1]) + "\n")
+                    arch.write(str(l.type_line) + "\n")
+            arch.close()
+
 
 if __name__ == '__main__':
     drawer = ProjectionDrawer()
